@@ -10,21 +10,21 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("postgresql://johndoe:randompassword@localhost:5432/mydb?schema=public")
+  url      = env("DATABASE_URL")
 }
 
 model Contact {
   id  Int       @id @default(autoincrement())
   phoneNumber     String?   
   email           String?   
-  linkedContact   Contact?  @relation("LinkedContact", fields: [linkedId], references: [id])
+  linkedId        Int?
   linkPrecedence  LinkPrecedence
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   deletedAt       DateTime? 
-};
+}
 
 enum LinkPrecedence {
-  secondary,
   primary
+  secondary
 }
