@@ -1,22 +1,19 @@
 {
   "name": "identityReconciliationApp",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "server.js",
   "license": "MIT",
   "scripts": {
-    "build": "tsc --build && yarn copy-views",
+    "build": "tsc --build",
     "start": "node ./dist/src/server.js",
     "prisma-generate": "yarn prisma generate --schema=./prisma/schema.prisma",
-    "test": "yarn jest",
-    "copy-views": "yarn cpx ./src/views/**/*.ejs ./dist/src/views"
+    "test": "yarn jest"
   },
   "dependencies": {
     "@prisma/client": "^5.15.0",
-    "axios": "^1.7.2",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "ejs": "^3.1.10",
     "express": "^4.19.2",
     "ts-mocha": "^10.0.0",
     "zod": "^3.23.8"
@@ -29,7 +26,6 @@
     "@types/node": "^20.14.2",
     "@types/supertest": "^6.0.2",
     "copyfiles": "^2.4.1",
-    "cpx": "^1.5.0",
     "jest": "^29.7.0",
     "mocha": "^10.4.0",
     "prisma": "^5.15.0",
