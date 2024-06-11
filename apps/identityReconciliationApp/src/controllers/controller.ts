@@ -20,6 +20,17 @@ interface Result {
 const add = async (req: Request, res: Response) => {
     try {
     const {email, phoneNumber} = req.body;
+
+
+    // Check if both email and phoneNumber are provided
+    if (email == null && phoneNumber == null) {
+        return res.status(400).json({
+        message: 'Both email and phoneNumber cannot be null or undefined'
+        });
+    }
+
+
+
     let allContacts: Array<ContactType> = await prisma.$queryRaw`
         SELECT * 
         FROM "Contact"
