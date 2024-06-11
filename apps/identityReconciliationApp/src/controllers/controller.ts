@@ -1,5 +1,4 @@
 import { Request, Response } from 'express';
-// import prisma from '../prismaClient';
 import { PrismaClient } from '@prisma/client';
 import { LinkPrecedence, ContactType} from '../models/contact';
 import { isExactMatch, primaryMatch }  from '../utils/match';
@@ -29,8 +28,6 @@ const add = async (req: Request, res: Response) => {
         });
     }
 
-
-
     let allContacts: Array<ContactType> = await prisma.$queryRaw`
         SELECT * 
         FROM "Contact"
@@ -50,14 +47,6 @@ const add = async (req: Request, res: Response) => {
         )
         ORDER BY "createdAt" DESC;
   `;
-    // console.log(email,phoneNumber);
-    // const allContacts = await prisma.$queryRaw`
-    //     SELECT linkedId 
-    //     FROM Contact
-    //     WHERE (email = ${email} OR phoneNumber = ${phoneNumber}) 
-    //         AND linkedId IS NOT NULL
-    //     LIMIT 1
-    // `;
   
     let primaryId = allContacts.find((element)=>{
         return element.linkPrecedence === LinkPrecedence.Primary;
@@ -69,22 +58,30 @@ const add = async (req: Request, res: Response) => {
               phoneNumber: phoneNumber,
               linkPrecedence: LinkPrecedence.Primary,
             }
-          });
+        });
 
         if(!newContact){
             throw new Error('Action can not be done');
         }
 
         allContacts.push(newContact);
+        primaryId = newContact.id;
     } else {
         if(!isExactMatch({email, phoneNumber}, allContacts)) {
-            await prisma.contact.create({
+            let newContact : ContactType = await prisma.contact.create({
                 data: {
                     email: email,
                     phoneNumber: phoneNumber,
                     linkPrecedence: LinkPrecedence.Secondary,
                 }
-            })
+            });
+
+            if(!newContact){
+                throw new Error('Action can not be done');
+            }
+
+            primaryId = newContact.id;
+
         }
         let primaryMatches = primaryMatch(allContacts);
         if(primaryMatches.length>1){
@@ -103,9 +100,6 @@ const add = async (req: Request, res: Response) => {
                 return contact;
             })
         } 
-
-        // ifExactlyMatch()-> Do nothing
-        // ifPartiallyMatch()-> check for multiple primary / if multiple primary give the second primary secondary / Edit second primary // add new contact element to primary / create new contact / add new contact element and changed element to array 
     }
 
     const initialResponseObj: ResultObj = {
