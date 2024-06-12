@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { LinkPrecedence, ContactType} from '../models/contact';
-import { isExactMatch, primaryMatch }  from '../utils/match';
+import { isNewInfo, primaryMatch }  from '../utils/match';
 
 const prisma = new PrismaClient();
 
@@ -20,37 +20,90 @@ const add = async (req: Request, res: Response) => {
     try {
     const {email, phoneNumber} = req.body;
 
-
-    // Check if both email and phoneNumber are provided
+    // If both are null return error
     if (email == null && phoneNumber == null) {
         return res.status(400).json({
         message: 'Both email and phoneNumber cannot be null or undefined'
         });
     }
 
-    let allContacts: Array<ContactType> = await prisma.$queryRaw`
-        SELECT * 
-        FROM "Contact"
-        WHERE "linkedId" = (
-        SELECT "linkedId" 
-        FROM "Contact"
-        WHERE ("email" = ${email} OR "phoneNumber" = ${phoneNumber}) 
-            AND "linkedId" IS NOT NULL
-        LIMIT 1
-        )
-        OR "id" = (
-        SELECT "linkedId" 
-        FROM "Contact"
-        WHERE ("email" = ${email} OR "phoneNumber" = ${phoneNumber}) 
-            AND "linkedId" IS NOT NULL
-        LIMIT 1
-        )
-        ORDER BY "createdAt" DESC;
-  `;
-  
+    const primaryContacts: Array<Pick<ContactType, 'id'>> = await prisma.contact.findMany({
+        where: {
+        AND: [
+            {
+            OR: [
+                { email: email },
+                { phoneNumber: phoneNumber },
+            ],
+            },
+            {
+                linkPrecedence: LinkPrecedence.Primary,
+            },
+        ],
+        },
+        select: {
+            id: true,
+            linkedId: true,
+        },
+        distinct: ['id'],
+        orderBy: {
+        createdAt: 'desc',
+        },
+    });
+
+    const secondaryContacts: Array<Pick<ContactType, 'linkedId'>> = await prisma.contact.findMany({
+        where: {
+        AND: [
+            {
+            OR: [
+                { email: email },
+                { phoneNumber: phoneNumber },
+            ],
+            },
+            {
+                linkPrecedence: LinkPrecedence.Secondary,
+            },
+        ],
+        },
+        select: {
+            linkedId: true,
+        },
+        distinct: ['linkedId'],
+        orderBy: {
+        createdAt: 'desc',
+        },
+    });
+
+    const primarySet = new Set(primaryContacts.map(contact => contact.id));
+    const secondarySet = new Set(secondaryContacts.map(contact => contact.linkedId));
+
+    // Merge the sets while ensuring uniqueness
+    const mergedIdsSet = new Set([...primarySet, ...secondarySet]);
+    
+    let mergedIds = Array.from(mergedIdsSet);
+    let ids = mergedIds.filter(id => id !== null && id !== undefined) as number[];
+
+    let allContacts: Array<ContactType> = await prisma.contact.findMany({
+        where: {
+          OR: [
+            {
+              linkedId: { in: ids }
+            },
+            {
+              id: { in: ids }
+            }
+          ]
+        }
+      });
+    
+    let contactPrint = allContacts.map((element)=>{
+        return {phone:element.phoneNumber, email:element.email}
+    });
+
     let primaryId = allContacts.find((element)=>{
         return element.linkPrecedence === LinkPrecedence.Primary;
     })?.id ?? 0;
+
     if(allContacts.length===0){
         let newContact : ContactType = await prisma.contact.create({
             data: {
@@ -67,11 +120,12 @@ const add = async (req: Request, res: Response) => {
         allContacts.push(newContact);
         primaryId = newContact.id;
     } else {
-        if(!isExactMatch({email, phoneNumber}, allContacts)) {
+        if(isNewInfo({email, phoneNumber}, allContacts)) {
             let newContact : ContactType = await prisma.contact.create({
                 data: {
                     email: email,
                     phoneNumber: phoneNumber,
+                    linkedId: primaryId,
                     linkPrecedence: LinkPrecedence.Secondary,
                 }
             });
@@ -79,9 +133,7 @@ const add = async (req: Request, res: Response) => {
             if(!newContact){
                 throw new Error('Action can not be done');
             }
-
-            primaryId = newContact.id;
-
+            allContacts.push(newContact);
         }
         let primaryMatches = primaryMatch(allContacts);
         if(primaryMatches.length>1){
@@ -98,7 +150,7 @@ const add = async (req: Request, res: Response) => {
                     contact.linkPrecedence = LinkPrecedence.Secondary;
                 }
                 return contact;
-            })
+            });
         } 
     }
 
@@ -109,23 +161,32 @@ const add = async (req: Request, res: Response) => {
         secondaryContactIds: []
     };
     
-    // Initialize a Response object with the ResponseObj
+    // Initializing the result body
     const initialResponse: Result = {
         contact: initialResponseObj
     };
+
+    // storing unique values
+    const uniqueEmails = new Set();
+    const uniquePhoneNumbers = new Set();
+    const uniqueSecondaryContactIds = new Set();
     
     let result = allContacts.reduce((acc,element)=>{
-        if(element.email){
+        if(element.email && !uniqueEmails.has(element.email)){
             acc.contact.emails.push(element.email);
+            uniqueEmails.add(element.email)
         }
-        if(element.phoneNumber){
+        if(element.phoneNumber && !uniquePhoneNumbers.has(element.phoneNumber)){
             acc.contact.phoneNumbers.push(element.phoneNumber);
+            uniquePhoneNumbers.add(element.phoneNumber);
         }
-        if(element.linkedId){
-            acc.contact.secondaryContactIds.push(element.linkedId);;
+        if(element.linkedId && element.linkPrecedence===LinkPrecedence.Secondary && !uniqueSecondaryContactIds.has(element.id)){
+            acc.contact.secondaryContactIds.push(element.id);
+            uniqueSecondaryContactIds.add(element.id);
         }
         return acc;
     }, initialResponse);
+    
     res.status(200).json(result);
     } catch(error) {
         console.log('Error - ',error);
@@ -135,7 +196,6 @@ const add = async (req: Request, res: Response) => {
 const getAll = async (req: Request, res: Response)=>{
     try {
         const allData = await prisma.contact.findMany();
-        console.log(allData);
         res.status(200).json({Data: allData});
     } catch (error) {
         console.log('Error - ',error);
