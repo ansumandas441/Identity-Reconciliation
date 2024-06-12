@@ -27,6 +27,7 @@ const add = async (req: Request, res: Response) => {
             });
         }
 
+        //getting primary ids that matches either email or phoneNumber
         const primaryContacts: Array<Pick<ContactType, 'id'>> = await prisma.contact.findMany({
             where: {
             AND: [
@@ -51,6 +52,7 @@ const add = async (req: Request, res: Response) => {
             },
         });
 
+        //getting secondary ids that matches either email or phoneNumber
         const secondaryContacts: Array<Pick<ContactType, 'linkedId'>> = await prisma.contact.findMany({
             where: {
             AND: [
@@ -74,6 +76,7 @@ const add = async (req: Request, res: Response) => {
             },
         });
 
+        //Merging the primary and secondary id's to get unique primary ids
         const primarySet = new Set(primaryContacts.map(contact => contact.id));
         const secondarySet = new Set(secondaryContacts.map(contact => contact.linkedId));
 
@@ -83,6 +86,7 @@ const add = async (req: Request, res: Response) => {
         let mergedIds = Array.from(mergedIdsSet);
         let ids = mergedIds.filter(id => id !== null && id !== undefined) as number[];
 
+        //finding all contacts , related to the email or phone numbers
         let allContacts: Array<ContactType> = await prisma.contact.findMany({
             where: {
             OR: [
@@ -101,6 +105,7 @@ const add = async (req: Request, res: Response) => {
         })?.id ?? 0;
 
         if(allContacts.length===0){
+            //If there is no object matching the element, then create new element
             let newContact : ContactType = await prisma.contact.create({
                 data: {
                 email: email,
@@ -167,6 +172,8 @@ const add = async (req: Request, res: Response) => {
         const uniquePhoneNumbers = new Set();
         const uniqueSecondaryContactIds = new Set();
         
+
+        //Collecting emails, phone numbers and other informations from the contact elements to build result
         let result = allContacts.reduce((acc,element)=>{
             if(element.email && !uniqueEmails.has(element.email)){
                 acc.contact.emails.push(element.email);
